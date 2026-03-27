@@ -1,0 +1,70 @@
+services:
+  nginx:
+    image: nginx:alpine
+    expose:
+      - "2026"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
+      - gateway
+      - langgraph
+    networks:
+      - coolify
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      target: prod
+    environment:
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-deerflow-kang-2026-secret}
+    env_file:
+      - .env
+    networks:
+      - coolify
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: sh -c "cp /app/config.yaml /app/backend/config.yaml 2>/dev/null; cd backend && PYTHONPATH=. uv run uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001 --workers 2"
+    volumes:
+      - deer-flow-data:/app/backend/.deer-flow
+    working_dir: /app
+    environment:
+      - CI=true
+      - DEER_FLOW_HOME=/app/backend/.deer-flow
+    env_file:
+      - .env
+    networks:
+      - coolify
+    restart: unless-stopped
+
+  langgraph:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: sh -c "cd /app/backend && uv run langgraph dev --no-browser --allow-blocking --no-reload --host 0.0.0.0 --port 2024"
+    volumes:
+      - deer-flow-data:/app/backend/.deer-flow
+    environment:
+      - CI=true
+      - DEER_FLOW_HOME=/app/backend/.deer-flow
+      - DEER_FLOW_CONFIG_PATH=/app/config.yaml
+      - DEER_FLOW_EXTENSIONS_CONFIG_PATH=/app/extensions_config.json
+      - LANGCHAIN_TRACING_V2=false
+    env_file:
+      - .env
+    networks:
+      - coolify
+    restart: unless-stopped
+
+volumes:
+  deer-flow-data:
+
+networks:
+  coolify:
+    external: true
